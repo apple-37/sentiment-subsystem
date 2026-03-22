@@ -1,0 +1,50 @@
+# ================== #
+#   Go               #
+# ================== #
+
+
+
+# Go 构建缓存
+/vendor/
+*~
+*.log
+*.prof
+
+# 依赖和工具 (如果使用 vendor 模式且不想提交)
+# vendor/
+
+# GoLand IDE
+.idea/
+.idea_modules/
+
+# VS Code IDE
+.vscode/
+
+# ================== #
+#   Configuration    #
+# ================== #
+
+# 从 config_template.yaml 复制而来的本地配置文件
+# 模板文件应该被追踪，但实际配置文件不应该
+config.yaml
+*.yml
+!config_template.yaml # 使用 ! 确保模板文件总是被追踪
+
+# 环境变量文件
+.env
+.env.*
+!.env.example # 确保环境变量模板文件被追踪
+
+# ================== #
+#   System Files     #
+# ================== #
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini

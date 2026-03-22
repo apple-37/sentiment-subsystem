@@ -1,0 +1,5 @@
+redis_addr: "127.0.0.1:6379"
+rabbitmq_url: "amqp://your_user:your_pwd@127.0.0.1:5672/"
+queue_name: "article_events"
+log_level: "debug"
+mysql_dsn: "your_user:your_pwd@tcp(127.0.0.1:3306)/sentiment?charset=utf8mb4&parseTime=True&loc=Local" 
