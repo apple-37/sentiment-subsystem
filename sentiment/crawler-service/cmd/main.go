@@ -24,6 +24,7 @@ var domainToCountry = map[string]string{
 	"nytimes.com":   "USA",
 	"yahoo.co.jp":   "JP",
 }
+
 // 新增：信源权威度权重表 (1.0 为基准，越高越权威)
 var sourceAuthority = map[string]float64{
 	"people.com.cn": 1.5,
@@ -36,30 +37,74 @@ var sourceAuthority = map[string]float64{
 
 func getCountryBySource(sourceURL string, lang string) string {
 	u, err := url.Parse(sourceURL)
+	host := ""
 	if err == nil && u.Host != "" {
-		host := strings.TrimPrefix(strings.ToLower(u.Host), "www.")
-		for domain, country := range domainToCountry {
-			if strings.Contains(host, domain) {
-				return country
-			}
-		}
-		if strings.HasSuffix(host, ".fr") { return "FR" }
-		if strings.HasSuffix(host, ".jp") { return "JP" }
-		if strings.HasSuffix(host, ".ru") { return "RU" }
+		host = strings.TrimPrefix(strings.ToLower(u.Host), "www.")
 	}
-	switch lang {
-	case "zh": return "CN"
-	case "ar": return "ARAB"
-	default:   return "UNKNOWN"
+
+	// 1. 先尝试域名后缀匹配 (这是最快的特征)
+	if strings.HasSuffix(host, ".jp") {
+		return "JP"
+	}
+	if strings.HasSuffix(host, ".fr") {
+		return "FR"
+	}
+	if strings.HasSuffix(host, ".ru") {
+		return "RU"
+	}
+	if strings.HasSuffix(host, ".de") {
+		return "DE"
+	}
+	if strings.HasSuffix(host, ".es") {
+		return "ES"
+	}
+	if strings.HasSuffix(host, ".cn") {
+		return "CN"
+	}
+
+	// 2. 补充你数据里出现的特定大站
+	if strings.Contains(host, "techcrunch.com") {
+		return "USA"
+	}
+	if strings.Contains(host, "nytimes.com") {
+		return "USA"
+	}
+	if strings.Contains(host, "reuters") {
+		return "UK"
+	}
+	if strings.Contains(host, "aljazeera") {
+		return "ARAB"
+	}
+
+	// 3. 根据语言代码兜底映射 (你的数据里 language 字段是 en, fr, de 等)
+	switch strings.ToLower(lang) {
+	case "zh", "zh-cn":
+		return "CN"
+	case "en":
+		return "USA/UK" // 英文通常归类到主要英语国家
+	case "ja":
+		return "JP"
+	case "fr":
+		return "FR"
+	case "de":
+		return "DE"
+	case "es":
+		return "ES"
+	case "ru":
+		return "RU"
+	case "ar":
+		return "ARAB"
+	default:
+		return "GLOBAL" // 替代 UNKNOWN，好听一点
 	}
 }
 
 func main() {
 	cfg := config.LoadConfig()
-	logger.InitLogger(cfg.LogLevel)
+	logger.InitLogger(cfg.App.LogLevel)
 	defer logger.Log.Sync()
 
-	mqPub, err := publisher.NewRabbitMQPublisher(cfg.RabbitMQ, cfg.QueueName)
+	mqPub, err := publisher.NewRabbitMQPublisher(cfg.RabbitMQ.URL, cfg.RabbitMQ.QueueName)
 	if err != nil {
 		logger.Log.Fatal("Failed to connect MQ", zap.Error(err))
 	}
@@ -74,7 +119,7 @@ func main() {
 		logger.Log.Fatal("Cannot open input data", zap.Error(err))
 	}
 
-	articles := parser.ParseRawMongoDump(string(byteValue))
+	articles := parser.ParseRawJSONL(string(byteValue))
 	logger.Log.Info("Parsed raw data", zap.Int("count", len(articles)))
 
 	for _, rawArticle := range articles {
@@ -87,7 +132,7 @@ func main() {
 
 		// 🌟 2. 核心：通过工厂获取对应语言的提取器
 		worker := extractorFactory.GetExtractor(rawArticle.Language)
-		
+
 		// 🌟 3. 调用统一接口进行 TextRank 计算
 		keywordsWeight := worker.Extract(rawArticle.Text, 30)
 		var keywordSignificanceSum float64
@@ -113,9 +158,14 @@ func main() {
 		if hotspotPotentialScore > 50.0 { // 50.0 是一个需要根据数据调试的经验阈值
 			isHotspot = "YES"
 		}
-		
-		logger.Log.Info("Article Processed", 
-			zap.String("id", rawArticle.ID), 
+		// 增加这行日志，排查为何没结果
+		logger.Log.Debug("Processing Language Detail",
+			zap.String("lang", rawArticle.Language),
+			zap.Int("keyword_count", len(keywordsWeight)),
+			zap.Float64("weight_sum", keywordSignificanceSum))
+
+		logger.Log.Info("Article Processed",
+			zap.String("id", rawArticle.ID),
 			zap.Float64("potential_score", hotspotPotentialScore),
 			zap.String("is_potential_hotspot", isHotspot)) // 直接在日志里输出决策
 		event := models.ArticleEvent{
@@ -128,8 +178,8 @@ func main() {
 		if err := mqPub.Publish(event); err != nil {
 			logger.Log.Error("Publish failed", zap.String("id", event.ArticleID), zap.Error(err))
 		} else {
-			logger.Log.Info("Successfully pushed to MQ", 
-				zap.String("id", event.ArticleID), 
+			logger.Log.Info("Successfully pushed to MQ",
+				zap.String("id", event.ArticleID),
 				zap.String("country", targetCountry))
 		}
 	}

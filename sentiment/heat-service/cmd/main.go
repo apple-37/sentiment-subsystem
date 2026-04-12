@@ -14,18 +14,17 @@ import (
 
 	"go.uber.org/zap"
 )
-
 func main() {
 	cfg := config.LoadConfig()
-	logger.InitLogger(cfg.LogLevel)
+	logger.InitLogger(cfg.App.LogLevel)
 	defer logger.Log.Sync()
-
+	
 	// 1. 初始化 Redis
-	redisStore := storage.NewRedisStore(cfg.RedisAddr)
+	redisStore := storage.NewRedisStore(cfg.Redis.Addr, cfg.Redis.Password)
 
 	// 2. 初始化 MySQL (用于后续持久化归档)
 	// 注意：确保 config.yaml 中配置了 mysql_dsn
-	mysqlStore, err := storage.NewMySQLStore(cfg.MySQLDSN)
+	mysqlStore, err := storage.NewMySQLStore(cfg.MySQL.DSN)
 	if err != nil {
 		logger.Log.Fatal("Failed to connect MySQL", zap.Error(err))
 	}
@@ -36,7 +35,7 @@ func main() {
 	heatAnalyzer := analyzer.NewHeatAnalyzer(redisStore)
 	
 	// 4. 初始化 MQ 消费者
-	mqConsumer, err := consumer.NewRabbitMQConsumer(cfg.RabbitMQ, cfg.QueueName, heatAnalyzer)
+	mqConsumer, err := consumer.NewRabbitMQConsumer(cfg.RabbitMQ.URL, cfg.RabbitMQ.QueueName, heatAnalyzer)
 	if err != nil {
 		logger.Log.Fatal("Failed to init MQ consumer", zap.Error(err))
 	}

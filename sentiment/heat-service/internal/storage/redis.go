@@ -9,9 +9,14 @@ type RedisStore struct {
 	client *redis.Client
 }
 
-func NewRedisStore(addr string) *RedisStore {
+// 修改函数，增加 password 参数
+func NewRedisStore(addr string, password string) *RedisStore {
 	return &RedisStore{
-		client: redis.NewClient(&redis.Options{Addr: addr}),
+		client: redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: password, // 这里的 password 就是你设置的密码
+			DB:       0,        // 默认数据库为 0，也可以根据需要指定
+		}),
 	}
 }
 
