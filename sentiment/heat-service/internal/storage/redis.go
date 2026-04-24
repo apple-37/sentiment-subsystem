@@ -2,8 +2,15 @@ package storage
 
 import (
 	"context"
+
 	"github.com/go-redis/redis/v8"
 )
+
+type ArticleRank struct {
+	ArticleID string
+	Title     string
+	Score     float64
+}
 
 type RedisStore struct {
 	client *redis.Client
@@ -50,4 +57,48 @@ func (r *RedisStore) DecayHeatMap(ctx context.Context, country string, factor fl
 
 	// 附带清理机制：为了防止长尾词占用过多内存，移除热度低于 1.0 的“冷寂词”
 	return r.client.ZRemRangeByScore(ctx, key, "-inf", "1.0").Err()
+}
+
+// SaveArticleScore 保存新闻得分，并记录标题用于榜单展示
+func (r *RedisStore) SaveArticleScore(ctx context.Context, country, articleID, title string, score float64) error {
+	rankKey := "article_rank:" + country
+	titleKey := "article_title:" + country
+
+	pipe := r.client.TxPipeline()
+	pipe.ZAdd(ctx, rankKey, &redis.Z{Score: score, Member: articleID})
+	pipe.HSet(ctx, titleKey, articleID, title)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+// GetTopNArticleTitles 获取某个国家得分最高的前 N 篇新闻
+func (r *RedisStore) GetTopNArticleTitles(ctx context.Context, country string, n int64) ([]ArticleRank, error) {
+	rankKey := "article_rank:" + country
+	titleKey := "article_title:" + country
+
+	top, err := r.client.ZRevRangeWithScores(ctx, rankKey, 0, n-1).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ArticleRank, 0, len(top))
+	for _, item := range top {
+		articleID, ok := item.Member.(string)
+		if !ok {
+			continue
+		}
+		title, err := r.client.HGet(ctx, titleKey, articleID).Result()
+		if err == redis.Nil {
+			title = ""
+		} else if err != nil {
+			return nil, err
+		}
+		result = append(result, ArticleRank{
+			ArticleID: articleID,
+			Title:     title,
+			Score:     item.Score,
+		})
+	}
+
+	return result, nil
 }

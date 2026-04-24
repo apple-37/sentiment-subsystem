@@ -170,6 +170,8 @@ func main() {
 			zap.String("is_potential_hotspot", isHotspot)) // 直接在日志里输出决策
 		event := models.ArticleEvent{
 			ArticleID: rawArticle.ID,
+			Title:     rawArticle.Title,
+			Score:     hotspotPotentialScore,
 			Country:   targetCountry,
 			Language:  rawArticle.Language,
 			Keywords:  keywordsWeight,

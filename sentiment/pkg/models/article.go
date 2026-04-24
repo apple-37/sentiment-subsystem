@@ -15,6 +15,8 @@ type RawArticle struct {
 
 type ArticleEvent struct {
 	ArticleID string             `json:"article_id"`
+	Title     string             `json:"title"`
+	Score     float64            `json:"score"`
 	Country   string             `json:"country"` // 🌟 新增：由爬虫端或外部传入的国家归属
 	Language  string             `json:"language"`
 	Keywords  map[string]float64 `json:"keywords"` // 🌟 全部词频，不作任何过滤

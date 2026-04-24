@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"sentiment/heat-service/internal/storage"
 	"sentiment/pkg/logger"
@@ -84,4 +86,28 @@ func (a *HeatAnalyzer) Process(ctx context.Context, event models.ArticleEvent) {
 		zap.String("country", event.Country), 
 		zap.Int("words_counted", successCount),
 		zap.String("article_id", event.ArticleID))
+
+	if err := a.redisStore.SaveArticleScore(ctx, event.Country, event.ArticleID, event.Title, event.Score); err != nil {
+		logger.Log.Error("Failed to save article score", zap.Error(err), zap.String("article_id", event.ArticleID))
+		return
+	}
+
+	topArticles, err := a.redisStore.GetTopNArticleTitles(ctx, event.Country, 10)
+	if err != nil {
+		logger.Log.Error("Failed to load top scored articles", zap.Error(err), zap.String("country", event.Country))
+		return
+	}
+
+	lines := make([]string, 0, len(topArticles))
+	for i, article := range topArticles {
+		title := strings.TrimSpace(article.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s (score=%.2f)", i+1, title, article.Score))
+	}
+
+	logger.Log.Info("Top 10 news titles by score",
+		zap.String("country", event.Country),
+		zap.String("top10", strings.Join(lines, " | ")))
 }
